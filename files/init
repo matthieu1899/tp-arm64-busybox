@@ -1,0 +1,33 @@
+#!/bin/sh
+# /init — premier processus lancé par le noyau (PID 1) depuis l'initramfs.
+# S'il se termine, le noyau part en Kernel Panic : il ne doit donc jamais sortir.
+
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin
+
+# 1. Systèmes de fichiers virtuels
+mount -t proc     proc     /proc
+mount -t sysfs    sysfs    /sys
+mount -t devtmpfs devtmpfs /dev
+mkdir -p /dev/pts
+mount -t devpts   devpts   /dev/pts
+mount -t tmpfs -o mode=1777,nosuid,nodev tmpfs /tmp
+mount -t tmpfs -o mode=0755,nosuid,nodev tmpfs /run
+
+# 2. Identité et journaux
+[ -f /etc/hostname ] && hostname -F /etc/hostname
+dmesg > /var/log/boot.log       # journal de boot consultable depuis le shell
+dmesg -n 3                       # n'affiche plus que les erreurs noyau sur la console
+
+echo
+echo "========================================"
+echo " Linux embarqué ARM64 — BusyBox"
+echo " Noyau : $(uname -r) ($(uname -m))"
+echo " Boot en $(cut -d' ' -f1 /proc/uptime) s"
+echo "========================================"
+
+# 3. Shell sur la console série, relancé s'il est quitté (PID 1 ne doit jamais mourir)
+while true; do
+  setsid cttyhack /bin/sh -l
+  echo "Shell terminé — relance..."
+  sleep 1
+done
