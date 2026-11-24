@@ -83,8 +83,51 @@ QEMU (firmware virt)
 
 Le journal de boot est consultable sur la cible : `cat /var/log/boot.log`.
 
+
+## Semaine 2 — Service web PHP et réseau
+
+### Chaîne d'une requête
+
+    Navigateur (Windows 192.168.218.1)
+      -> VM Debian 192.168.218.150:8080
+        -> QEMU hostfwd tcp::8080 -> 10.0.2.15:80   (réseau "user" + carte virtio-net-pci)
+          -> httpd BusyBox (uid 33 www)
+            -> /usr/bin/php-cgi (statique) exécute /var/www/index.php
+
+### Composants ajoutés
+
+| Élément | Rôle |
+|---|---|
+| `scripts/02b-php.sh` | compile `php-cgi` 8.4 en statique (`--disable-all`, sans CLI, sans opcache, sans PEAR, sans JIT PCRE) |
+| `files/overlay/etc/httpd.conf` | associe `*.php` à `/usr/bin/php-cgi` |
+| `files/overlay/etc/php/php.ini` | configuration PHP durcie |
+| `files/overlay/var/www/` | site : `index.php` dynamique + `index.html` (redirection) |
+| `files/overlay/usr/share/udhcpc/default.script` | applique l'IP, la route et le DNS reçus par DHCP |
+| `files/init` | monte le réseau (`udhcpc` sur eth0) et lance `httpd` |
+
+### Durcissement appliqué
+
+- **Moindre privilège** : httpd ouvre le port 80 en root puis passe sous l'uid/gid 33 (`www`) ; php-cgi hérite de ces droits.
+- **PHP minimal** : seules les extensions du cœur sont compilées ; binaire statique et strippé (5,8 Mo).
+- **php.ini** : `expose_php=Off`, `display_errors=Off`, `allow_url_fopen/include=Off`, `disable_functions` (exec, system, shell_exec...), `open_basedir=/var/www:/proc:/tmp`, `file_uploads=Off`, limites mémoire/temps.
+- **Échappement des entrées** : `htmlspecialchars()` sur toutes les données affichées — test `?nom=<script>alert(1)</script>` affiché comme texte, non exécuté.
+- **Journaux** : `/var/log/httpd.log` (requêtes) et `/var/log/php_errors.log` (erreurs PHP, invisibles pour le client).
+
+### Limites du httpd BusyBox
+
+| Limite | Risque | Acceptable ? |
+|---|---|---|
+| Pas de HTTPS natif | identifiants et données circulent en clair, interception possible (MITM) | non pour une exposition réelle : placer un reverse proxy TLS devant, ou n'exposer qu'en réseau de confiance |
+| Pas de virtual hosts | un seul site par instance | oui pour un équipement embarqué mono-usage |
+| CGI simplifié : un processus php-cgi par requête | faible tenue en charge, déni de service facile | oui en labo ; non face à Internet sans limitation de débit |
+| Pas de limitation de débit ni de connexions | DoS par saturation | à compenser par un pare-feu (iptables/nftables) |
+| Authentification limitée (Basic) | mot de passe en base64, donc en clair sans TLS | non sans HTTPS |
+| Index : la directive `I:` n'a pas fonctionné avec un `.php` | `/` renvoyait 404 | contourné par `index.html` qui redirige vers `index.php` |
+| Pas de journalisation structurée ni de rotation | journaux en RAM, perdus au redémarrage | à externaliser (syslog distant) en production |
+
+En résumé, ce serveur convient à une **interface d'administration locale** sur un réseau isolé, pas à une exposition directe sur Internet.
 ## Avancement
 
 - [x] Semaine 1 — toolchain, noyau arm64, BusyBox statique, `/init`, initramfs, boot QEMU
-- [ ] Semaine 2 — réseau VirtIO, PHP-CGI statique, httpd BusyBox, accès depuis le réseau
+- [x] Semaine 2 — réseau VirtIO, PHP-CGI statique, httpd BusyBox, accès depuis le réseau
 - [ ] Semaine 3 — portage Raspberry Pi, DHCP (udhcpc)
