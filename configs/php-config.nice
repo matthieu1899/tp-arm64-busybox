@@ -1,0 +1,21 @@
+#! /bin/sh
+#
+# Created by configure
+
+LDFLAGS='-static' \
+CC='aarch64-linux-gnu-gcc' \
+'./configure' \
+'--build=x86_64-linux-gnu' \
+'--host=aarch64-linux-gnu' \
+'--prefix=/usr' \
+'--with-config-file-path=/etc/php' \
+'--disable-all' \
+'--enable-cgi' \
+'--disable-cli' \
+'--disable-phpdbg' \
+'--disable-opcache' \
+'--without-pear' \
+'--without-pcre-jit' \
+'build_alias=x86_64-linux-gnu' \
+'host_alias=aarch64-linux-gnu' \
+"$@"

@@ -18,14 +18,33 @@ mount -t tmpfs -o mode=0755,nosuid,nodev tmpfs /run
 dmesg > /var/log/boot.log       # journal de boot consultable depuis le shell
 dmesg -n 3                       # n'affiche plus que les erreurs noyau sur la console
 
+# 3. Réseau : boucle locale + DHCP sur eth0 (QEMU : 10.0.2.15 ; Raspberry Pi : réseau de l'école)
+ip link set lo up
+if ip link show eth0 >/dev/null 2>&1; then
+  ip link set eth0 up
+  # -t 5 -T 3 : 5 tentatives espacées de 3 s ; -b : passe en arrière-plan si pas de bail
+  udhcpc -i eth0 -s /usr/share/udhcpc/default.script -t 5 -T 3 -b
+else
+  echo "ATTENTION : aucune interface eth0 détectée"
+fi
+
+# 4. Serveur web : httpd ouvre le port 80 en root puis abandonne ses droits (uid/gid 33 = www)
+touch /var/log/httpd.log /var/log/php_errors.log
+chown 33:33 /var/log/php_errors.log
+httpd -f -v -p 80 -u 33:33 -h /var/www -c /etc/httpd.conf >> /var/log/httpd.log 2>&1 &
+
+IP=$(ip -4 -o addr show eth0 2>/dev/null | awk '{print $4}')
+
 echo
 echo "========================================"
-echo " Linux embarqué ARM64 — BusyBox"
+echo " Linux embarqué ARM64 — BusyBox + PHP"
 echo " Noyau : $(uname -r) ($(uname -m))"
+echo " IP    : ${IP:-aucune}"
+echo " Web   : httpd sur le port 80"
 echo " Boot en $(cut -d' ' -f1 /proc/uptime) s"
 echo "========================================"
 
-# 3. Shell sur la console série, relancé s'il est quitté (PID 1 ne doit jamais mourir)
+# 5. Shell sur la console série, relancé s'il est quitté (PID 1 ne doit jamais mourir)
 while true; do
   setsid cttyhack /bin/sh -l
   echo "Shell terminé — relance..."
